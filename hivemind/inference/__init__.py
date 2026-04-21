@@ -135,3 +135,30 @@ print("🌫️  MIST PROTOCOL: Ghost modules loaded successfully")
 print("   - Chronos-Sync: Time-zone compute migration active")
 print("   - Semantic Telepathy: Intent-based communication ready")
 print("   - Quantum Branching: Parallel probability simulation enabled")
+
+# --- Ghost Protocol: Quantum Mesh & Geo-Sharding ---
+try:
+    from .quantum_mesh import (
+        QuantumMeshRunner,
+        CausalSpeculator,
+        DynamicWorkletScheduler,
+        ContextPrefetcher,
+        Worklet,
+        SpeculativeState
+    )
+    from .geo_shard_manager import (
+        GeoShardManager,
+        GeoNode,
+        GeoShard
+    )
+    __all__.extend([
+        'QuantumMeshRunner',
+        'CausalSpeculator', 
+        'DynamicWorkletScheduler',
+        'ContextPrefetcher',
+        'GeoShardManager',
+        'GeoNode',
+        'GeoShard'
+    ])
+except ImportError:
+    pass # Optional modules
