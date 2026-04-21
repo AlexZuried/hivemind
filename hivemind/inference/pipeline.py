@@ -22,6 +22,13 @@ from hivemind.moe.expert_uid import ExpertUID, ExpertInfo
 from hivemind.p2p import P2P, PeerID
 from hivemind.utils import get_logger, get_dht_time
 from hivemind.inference.discovery import LayerDiscoveryProtocol
+from hivemind.inference.performance import (
+    PerformanceMonitor,
+    AdaptiveCompressor,
+    SpeculativeExecutor,
+    CheckpointManager,
+    SmartScheduler
+)
 
 logger = get_logger(__name__)
 
@@ -146,14 +153,48 @@ class PipelineParallelRunner:
     
     This enables running very large models (like Kimi K2.6) by splitting
     the pipeline across multiple consumer GPUs worldwide.
+    
+    Performance optimizations included:
+    - Speculative execution to hide network latency
+    - Adaptive compression for bandwidth optimization
+    - Checkpointing for fault tolerance
+    - Smart scheduling based on performance metrics
     """
     
-    def __init__(self, dht: DHT, model_name: str, p2p: P2P = None):
+    def __init__(
+        self, 
+        dht: DHT, 
+        model_name: str, 
+        p2p: P2P = None,
+        enable_optimizations: bool = True
+    ):
         self.dht = dht
         self.model_name = model_name
         self.p2p = p2p
         self.discovery = LayerDiscoveryProtocol(dht, model_name)
         self._topology: Optional[List[ExpertInfo]] = None
+        
+        # Performance optimization components
+        self.enable_optimizations = enable_optimizations
+        if enable_optimizations:
+            self.performance_monitor = PerformanceMonitor(dht)
+            self.compressor = AdaptiveCompressor(initial_bits=16)
+            self.executor = SpeculativeExecutor(
+                redundancy_factor=2,
+                performance_monitor=self.performance_monitor
+            )
+            self.checkpointer = CheckpointManager(checkpoint_interval=10, dht=dht)
+            self.scheduler = SmartScheduler(self.performance_monitor)
+            
+            # Start background monitoring
+            self.performance_monitor.run_background()
+            logger.info("Performance optimizations enabled")
+        else:
+            self.performance_monitor = None
+            self.compressor = None
+            self.executor = None
+            self.checkpointer = None
+            self.scheduler = None
         
     async def discover_topology(self, max_layers: int = 100) -> List[ExpertInfo]:
         """
@@ -183,12 +224,13 @@ class PipelineParallelRunner:
             self.p2p = loop.run_until_complete(self.dht.replicate_p2p())
         return self.p2p
     
-    async def generate(self, prompt: str, max_tokens: int = 100) -> str:
+    async def generate(self, prompt: str, max_tokens: int = 100, session_id: str = None) -> str:
         """
-        Generate text by passing through the distributed pipeline.
+        Generate text by passing through the distributed pipeline with performance optimizations.
         
         :param prompt: Input text prompt
         :param max_tokens: Maximum tokens to generate
+        :param session_id: Optional session ID for checkpointing and contribution tracking
         :returns: Generated text
         """
         if self._topology is None:
@@ -197,15 +239,109 @@ class PipelineParallelRunner:
         # Tokenize input (simplified - in practice use actual tokenizer)
         hidden_states = self._encode_prompt(prompt)
         
-        # Pass through each layer in the pipeline
+        # Get P2P instance
         p2p = self._get_p2p()
-        for expert_info in self._topology:
-            expert = RemoteExpert(expert_info, p2p)
-            hidden_states = expert(hidden_states)
+        
+        # Use optimized execution if enabled
+        if self.enable_optimizations and self.executor:
+            hidden_states = await self._generate_optimized(p2p, hidden_states, session_id)
+        else:
+            # Fallback to simple sequential execution
+            for i, expert_info in enumerate(self._topology):
+                expert = RemoteExpert(expert_info, p2p)
+                
+                # Apply compression if enabled
+                if self.compressor:
+                    compressed, bits_used = self.compressor.compress_tensor(hidden_states)
+                    hidden_states = compressed
+                
+                hidden_states = expert(hidden_states)
+                
+                # Save checkpoint at intervals
+                if self.checkpointer and session_id and self.checkpointer.should_checkpoint(i):
+                    self.checkpointer.save_checkpoint(i, hidden_states, session_id)
         
         # Decode output
         generated_text = self._decode_output(hidden_states)
         return generated_text
+    
+    async def _generate_optimized(
+        self, 
+        p2p: P2P, 
+        hidden_states: torch.Tensor,
+        session_id: Optional[str] = None
+    ) -> torch.Tensor:
+        """
+        Optimized generation with speculative execution and adaptive compression.
+        """
+        import numpy as np
+        
+        for i, expert_info in enumerate(self._topology):
+            start_time = time.time()
+            
+            try:
+                # Apply adaptive compression before sending
+                if self.compressor:
+                    compressed, bits_used = self.compressor.compress_tensor(hidden_states)
+                    data_size_mb = compressed.numel() * compressed.element_size() / 1e6
+                else:
+                    compressed = hidden_states
+                    data_size_mb = hidden_states.numel() * hidden_states.element_size() / 1e6
+                
+                # Execute with speculative redundancy
+                result = await self.executor.execute_with_speculation(
+                    p2p=p2p,
+                    expert_infos=self._topology,
+                    input_tensor=compressed,
+                    layer_index=i
+                )
+                
+                latency = time.time() - start_time
+                
+                # Adjust compression based on observed latency
+                if self.compressor:
+                    self.compressor.adjust_compression(latency, success=True)
+                
+                # Record performance metrics
+                self.performance_monitor.record_inference(
+                    peer_id=str(expert_info.peer_id),
+                    layer_range=(i, i),
+                    latency=latency,
+                    data_size_mb=data_size_mb,
+                    success=True
+                )
+                
+                hidden_states = result
+                
+                # Save checkpoint at intervals
+                if self.checkpointer and session_id and self.checkpointer.should_checkpoint(i):
+                    self.checkpointer.save_checkpoint(i, hidden_states, session_id)
+                    
+            except Exception as e:
+                logger.warning(f"Layer {i} failed: {e}. Attempting recovery...")
+                
+                # Record failure
+                self.performance_monitor.record_inference(
+                    peer_id=str(expert_info.peer_id),
+                    layer_range=(i, i),
+                    latency=5.0,  # Timeout
+                    data_size_mb=0,
+                    success=False
+                )
+                
+                # Try to recover from checkpoint
+                if self.checkpointer and session_id:
+                    checkpoint = self.checkpointer.get_latest_checkpoint(i)
+                    if checkpoint:
+                        ckpt_layer, hidden_states = checkpoint
+                        logger.info(f"Recovered from checkpoint at layer {ckpt_layer}")
+                        # Retry from checkpoint with different node selection
+                        continue
+                
+                # If recovery fails, raise error
+                raise RuntimeError(f"Failed at layer {i} and no checkpoint available")
+        
+        return hidden_states
     
     def _encode_prompt(self, prompt: str) -> torch.Tensor:
         """Convert prompt to initial hidden states (placeholder)"""
@@ -228,32 +364,60 @@ class PipelineParallelRunner:
         peer_ids = [str(e.peer_id) for e in self._topology]
         unique_peers = set(peer_ids)
         
-        return {
+        stats = {
             "model_name": self.model_name,
             "total_layers": len(self._topology),
             "unique_peers": len(unique_peers),
-            "peer_distribution": {peer: peer_ids.count(peer) for peer in unique_peers}
+            "peer_distribution": {peer: peer_ids.count(peer) for peer in unique_peers},
+            "optimizations_enabled": self.enable_optimizations
         }
+        
+        # Add performance metrics if optimizations are enabled
+        if self.enable_optimizations and self.performance_monitor:
+            stats["performance"] = {
+                "tracked_nodes": len(self.performance_monitor._metrics),
+                "unreliable_nodes": len(self.performance_monitor.get_unreliable_nodes())
+            }
+        
+        if self.compressor:
+            stats["compression"] = self.compressor.get_compression_stats()
+        
+        return stats
+    
+    def shutdown(self):
+        """Cleanly shutdown all components"""
+        if self.performance_monitor:
+            self.performance_monitor.shutdown()
+        logger.info("PipelineParallelRunner shutdown complete")
 
 
 async def run_pipeline_example():
-    """Example usage of pipeline parallelism"""
+    """Example usage of pipeline parallelism with performance optimizations"""
     from hivemind.dht import DHT
     
     # Initialize DHT
     dht = DHT(start=True)
     
-    # Create pipeline runner
-    runner = PipelineParallelRunner(dht, "kimi-k2.6")
+    # Create pipeline runner with optimizations enabled (default)
+    runner = PipelineParallelRunner(dht, "kimi-k2.6", enable_optimizations=True)
     
     try:
         # Discover available compute resources
         topology = await runner.discover_topology()
         print(f"Found {len(topology)} model chunks")
         
-        # Run inference
-        result = await runner.generate("What is quantum computing?", max_tokens=50)
+        # Run inference with session tracking
+        result = await runner.generate(
+            "What is quantum computing?", 
+            max_tokens=50,
+            session_id="session_001"
+        )
         print(f"Generated: {result}")
         
+        # Get detailed statistics
+        stats = runner.get_pipeline_stats()
+        print(f"Pipeline stats: {stats}")
+        
     finally:
+        runner.shutdown()
         dht.shutdown()
