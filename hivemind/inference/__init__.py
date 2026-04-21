@@ -22,27 +22,18 @@ from hivemind.inference.performance import (
     CheckpointManager,
     SmartScheduler
 )
+from hivemind.inference.mist_node import MistNode, MistConfig, run_mist_node
 from hivemind.inference.cli import run_inference_cli
 
-# Ghost Protocol: Next-generation performance engine
-try:
-    from hivemind.inference.ghost import (
-        ChronoExecutor,
-        SpeculativeState,
-        NeuralEntropyCoder,
-        SharedCodebook,
-        MeshOrchestrator,
-        TaskPacket
-    )
-    GHOST_AVAILABLE = True
-except ImportError:
-    GHOST_AVAILABLE = False
-    ChronoExecutor = None
-    SpeculativeState = None
-    NeuralEntropyCoder = None
-    SharedCodebook = None
-    MeshOrchestrator = None
-    TaskPacket = None
+# Ghost Protocol imports
+from hivemind.inference.ghost import (
+    ChronoExecutor, SpeculativeState,
+    NeuralEntropyCoder, SharedCodebook,
+    MeshOrchestrator, TaskPacket,
+    NeuralZipper, ZipperConfig, AdaptivePredictor,
+    ShadowValidator, ConsensusEngine, ShadowConfig, NodeReputation, ShadowConsensusValidator,
+    HolographicContextManager, AnticipatoryRouter, NeuroPlasticTopology
+)
 
 __all__ = [
     # Core pipeline
@@ -71,6 +62,22 @@ __all__ = [
     "SharedCodebook",
     "MeshOrchestrator",
     "TaskPacket",
+    "NeuralZipper",
+    "ZipperConfig",
+    "AdaptivePredictor",
+    "ShadowValidator",
+    "ConsensusEngine",
+    "ShadowConfig",
+    "NodeReputation",
+    "ShadowConsensusValidator",
+    "HolographicContextManager",
+    "AnticipatoryRouter",
+    "NeuroPlasticTopology",
+    
+    # Mist Protocol
+    "MistNode",
+    "MistConfig",
+    "run_mist_node",
     
     # CLI
     "run_inference_cli",
