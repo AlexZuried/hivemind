@@ -99,3 +99,39 @@ __all__ += [
     'MicroGradient',
     'AggregatedUpdate'
 ]
+
+# Ghost Protocol Modules - The Mist Integration
+from hivemind.inference.chronos_sync import ChronosSyncEngine, MigrationPlan
+from hivemind.inference.semantic_telepathy import (
+    SemanticEncoder, 
+    SemanticDecoder, 
+    TelepathyChannel, 
+    ConceptVector
+)
+from hivemind.inference.quantum_branching import (
+    QuantumSimulator, 
+    DistributedQuantumRunner, 
+    ProbabilityBranch
+)
+
+__all__ += [
+    # Time-Zone Optimization
+    'ChronosSyncEngine',
+    'MigrationPlan',
+    
+    # Semantic Communication
+    'SemanticEncoder',
+    'SemanticDecoder', 
+    'TelepathyChannel',
+    'ConceptVector',
+    
+    # Quantum Parallelism
+    'QuantumSimulator',
+    'DistributedQuantumRunner',
+    'ProbabilityBranch',
+]
+
+print("🌫️  MIST PROTOCOL: Ghost modules loaded successfully")
+print("   - Chronos-Sync: Time-zone compute migration active")
+print("   - Semantic Telepathy: Intent-based communication ready")
+print("   - Quantum Branching: Parallel probability simulation enabled")
