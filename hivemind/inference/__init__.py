@@ -82,3 +82,20 @@ __all__ = [
     # CLI
     "run_inference_cli",
 ]
+
+# Autonomous Model Evolution - Swarm Learning
+from hivemind.inference.swarm_learner import (
+    SwarmLearner,
+    LocalLearner,
+    SecureAggregator,
+    MicroGradient,
+    AggregatedUpdate
+)
+
+__all__ += [
+    'SwarmLearner',
+    'LocalLearner', 
+    'SecureAggregator',
+    'MicroGradient',
+    'AggregatedUpdate'
+]
