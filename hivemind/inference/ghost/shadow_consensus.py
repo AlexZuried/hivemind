@@ -514,3 +514,7 @@ if __name__ == "__main__":
     health = engine.get_network_health()
     for key, value in health.items():
         print(f"{key}: {value}")
+
+
+# Alias for Mist Protocol compatibility
+ShadowConsensusValidator = ConsensusEngine

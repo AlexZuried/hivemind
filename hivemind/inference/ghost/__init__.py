@@ -18,8 +18,21 @@ from .shadow_consensus import (
     ShadowValidator, 
     ConsensusEngine, 
     ShadowConfig,
-    NodeReputation
+    NodeReputation,
+    ShadowConsensusValidator
 )
+
+# Mist Protocol additions
+try:
+    from .holographic import HolographicContextManager
+    from .anticipatory import AnticipatoryRouter
+    from .neuro_plastic import NeuroPlasticTopology
+    MIST_EXTENSIONS_AVAILABLE = True
+except ImportError:
+    MIST_EXTENSIONS_AVAILABLE = False
+    HolographicContextManager = None
+    AnticipatoryRouter = None
+    NeuroPlasticTopology = None
 
 __all__ = [
     # Original Ghost components
@@ -39,7 +52,13 @@ __all__ = [
     "ShadowValidator",
     "ConsensusEngine",
     "ShadowConfig",
-    "NodeReputation"
+    "NodeReputation",
+    "ShadowConsensusValidator",
+    
+    # Mist Protocol Extensions (if available)
+    "HolographicContextManager",
+    "AnticipatoryRouter",
+    "NeuroPlasticTopology"
 ]
 
 # Version tracking
